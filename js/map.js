@@ -124,6 +124,24 @@ export class WorldMap {
     this.prev = T.map((t) => ({ o: t.o, a: t.a }));
   }
 
+  /** Desenha (ou apaga, com null) a rota de uma transferência de tropas. */
+  showRoute(path) {
+    const key = path ? path.join(',') : '';
+    if (key === this.routeKey) return;
+    this.routeKey = key;
+    this.routeLayer ??= this.root.insert('g', '.labels').attr('class', 'route-layer');
+    this.routeLayer.selectAll('*').remove();
+    if (!path) return;
+    const W = this.world.territories;
+    for (let k = 1; k < path.length; k++) {
+      const a = W[path[k - 1]], b = W[path[k]];
+      if (Math.abs(a.c[0] - b.c[0]) > 150) continue; // cruza a borda do mapa
+      const [x1, y1] = this.proj(a.c), [x2, y2] = this.proj(b.c);
+      this.routeLayer.append('line').attr('class', 'route')
+        .attr('x1', x1).attr('y1', y1).attr('x2', x2).attr('y2', y2);
+    }
+  }
+
   floatText(i, text) {
     const [x, y] = this.proj(this.world.territories[i].c);
     const k = this.k;

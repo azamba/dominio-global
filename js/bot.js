@@ -1,5 +1,5 @@
 // IA simples: decide UMA ação por vez para o anfitrião animar a jogada.
-import { findSet } from './game.js';
+import { findSet, fortifyTargets } from './game.js';
 
 export function botAction(s, world, p) {
   const T = s.terr, W = world.territories;
@@ -43,12 +43,14 @@ export function botAction(s, world, p) {
   }
 
   if (s.step === 'fortify') {
-    // move tropas de um território interior para um vizinho na fronteira
+    // leva tropas paradas no interior para a fronteira alcançável mais fraca
     for (const i of mine) {
-      const free = T[i].a - 1 - (s.moved[i] || 0);
+      const free = T[i].a - 1;
       if (free < 1 || enemyNb(i).length) continue;
-      const to = W[i].nb.find((j) => T[j].o === p && enemyNb(j).length);
-      if (to !== undefined) return { type: 'fortify', from: i, to, n: free };
+      const borders = [...fortifyTargets(s, world, i)].filter((j) => enemyNb(j).length);
+      if (!borders.length) continue;
+      borders.sort((a, b) => T[a].a - T[b].a);
+      return { type: 'fortify', from: i, to: borders[0], n: free };
     }
     return { type: 'end' };
   }

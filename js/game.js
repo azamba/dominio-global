@@ -38,7 +38,7 @@ export function createGame(world, players, settings, rng = Math.random) {
   const s = {
     phase: 'playing',
     players: pl,
-    settings: { goal: settings.goal ?? 0.6 },
+    settings: { goal: settings.goal ?? 0.6, fortify: settings.fortify === 'free' ? 'free' : 'path' },
     terr,
     turn: 0,
     round: 1,
@@ -46,7 +46,6 @@ export function createGame(world, players, settings, rng = Math.random) {
     reserve: 0,
     conquered: false,
     pending: null,
-    moved: {},
     trades: 0,
     log: [],
     battle: null,
@@ -114,7 +113,6 @@ function startTurn(s, world) {
   s.reserve = r.total;
   s.conquered = false;
   s.pending = null;
-  s.moved = {};
   s.battle = null;
   while (s.players[p].cards.length >= 5 && doTrade(s, p));
 }
@@ -236,14 +234,13 @@ export function applyAction(s, world, p, act, rng = Math.random) {
     case 'fortify': {
       if (s.step !== 'fortify') return err('Não é fase de remanejamento');
       const { from, to } = act;
-      if (!valid(from) || !valid(to) || T[from].o !== p || T[to].o !== p) return err('Escolha dois territórios seus');
-      if (!adj(from, to)) return err('Os territórios não fazem fronteira');
-      const free = T[from].a - 1 - (s.moved[from] || 0);
-      const n = Math.min(act.n | 0, free);
-      if (n <= 0) return err('Sem exércitos livres para mover aqui');
+      if (!valid(from) || !valid(to) || from === to || T[from].o !== p || T[to].o !== p) return err('Escolha dois territórios seus');
+      if (!fortifyTargets(s, world, from).has(to)) return err('Não há caminho de países seus até lá');
+      const n = Math.min(act.n | 0, T[from].a - 1);
+      if (n <= 0) return err('Precisa deixar pelo menos 1 exército no país');
       T[from].a -= n;
       T[to].a += n;
-      s.moved[to] = (s.moved[to] || 0) + n;
+      log(s, `${pl.name} moveu ${n} de ${W[from].name} para ${W[to].name}`);
       break;
     }
     case 'end': {
@@ -288,4 +285,45 @@ export function attackOdds(a, d, sims = 500) {
     if (D === 0) wins++;
   }
   return wins / sims;
+}
+
+/**
+ * Países do dono de `from` para onde dá para remanejar a partir dele:
+ * todos os ligados por uma corrente de países próprios (modo "path"),
+ * ou qualquer país próprio (modo "free").
+ */
+export function fortifyTargets(s, world, from) {
+  const p = s.terr[from].o;
+  const out = new Set();
+  if (s.settings.fortify === 'free') {
+    s.terr.forEach((t, i) => { if (t.o === p && i !== from) out.add(i); });
+    return out;
+  }
+  const st = [from];
+  const seen = new Set([from]);
+  while (st.length) {
+    for (const j of world.territories[st.pop()].nb) {
+      if (!seen.has(j) && s.terr[j].o === p) { seen.add(j); out.add(j); st.push(j); }
+    }
+  }
+  return out;
+}
+
+/** Caminho mais curto por países próprios (para desenhar a rota), ou [from, to] no modo livre. */
+export function fortifyRoute(s, world, from, to) {
+  if (s.settings.fortify === 'free') return [from, to];
+  const p = s.terr[from].o;
+  const prev = new Map([[from, -1]]);
+  const q = [from];
+  while (q.length) {
+    const v = q.shift();
+    if (v === to) break;
+    for (const j of world.territories[v].nb) {
+      if (!prev.has(j) && s.terr[j].o === p) { prev.set(j, v); q.push(j); }
+    }
+  }
+  if (!prev.has(to)) return null;
+  const path = [];
+  for (let v = to; v !== -1; v = prev.get(v)) path.unshift(v);
+  return path;
 }

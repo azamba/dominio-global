@@ -1,7 +1,7 @@
 /* global QRCode */
 import {
   createGame, applyAction, forceEndTurn, reinforcementsFor, ownedCount, goalCount,
-  findSet, tradeValue, continentsOwned, attackOdds, CARD_SYMBOLS, MAX_PLAYERS,
+  findSet, tradeValue, continentsOwned, attackOdds, fortifyTargets, fortifyRoute, CARD_SYMBOLS, MAX_PLAYERS,
 } from './game.js';
 import { botAction } from './bot.js';
 import { loadWorld, WorldMap } from './map.js';
@@ -85,7 +85,7 @@ function hostCreate(resume) {
     hostId: myToken,
     lobby: {
       players: [{ id: myToken, name: myName(), bot: false, connected: true }],
-      settings: { goal: 0.6, startArmies: 15 },
+      settings: { goal: 0.6, startArmies: 15, fortify: 'path' },
     },
     game: null,
   };
@@ -182,6 +182,7 @@ function hostStart() {
   if (ps.length < 2) return toast('Precisa de pelo menos 2 jogadores (adicione um bot).');
   room.lobby.settings.goal = Number($('#set-goal').value);
   room.lobby.settings.startArmies = Number($('#set-armies').value);
+  room.lobby.settings.fortify = $('#set-fortify').value;
   room.game = createGame(world, ps.map((p) => ({ id: p.id, name: p.name, bot: p.bot, connected: p.connected })), room.lobby.settings);
   room.phase = 'playing';
   lastBattleSeq = 0;
@@ -294,7 +295,8 @@ function renderLobby() {
   const st = room.lobby.settings;
   $('#set-goal').value = String(st.goal);
   $('#set-armies').value = String(st.startArmies);
-  $('#settings-ro').textContent = `Objetivo: dominar ${Math.round(st.goal * 100)}% do mundo`;
+  $('#set-fortify').value = st.fortify || 'path';
+  $('#settings-ro').textContent = `Objetivo: dominar ${Math.round(st.goal * 100)}% do mundo · remanejamento ${st.fortify === 'free' ? 'livre' : 'por rota'}`;
 }
 
 /** Territórios onde o jogador pode tocar agora (sem nada selecionado). */
@@ -306,7 +308,7 @@ function actionable() {
     if (t.o !== me) return;
     if (g.step === 'reinforce') { if (g.reserve > 0) set.add(i); }
     else if (g.step === 'attack') { if (t.a >= 2 && W[i].nb.some((j) => T[j].o !== me)) set.add(i); }
-    else if (t.a - 1 - (g.moved[i] || 0) > 0 && W[i].nb.some((j) => T[j].o === me)) set.add(i);
+    else if (t.a > 1 && fortifyTargets(g, world, i).size) set.add(i);
   });
   return set;
 }
@@ -324,7 +326,7 @@ function highlight() {
     return hl;
   }
   if (g.step === 'attack') W[ui.sel].nb.forEach((j) => { if (T[j].o !== me) hl.targets.add(j); });
-  if (g.step === 'fortify') W[ui.sel].nb.forEach((j) => { if (T[j].o === me) hl.targets.add(j); });
+  if (g.step === 'fortify') hl.targets = fortifyTargets(g, world, ui.sel);
   hl.dim = true;
   return hl;
 }
@@ -348,10 +350,13 @@ function renderGame() {
   }
   if (ui.sel != null && g.terr[ui.sel].o !== me) ui.sel = ui.target = null;
   if (g.step === 'fortify' && ui.target != null && g.terr[ui.target].o !== me) ui.target = null;
+  if (g.step === 'fortify' && ui.sel != null && g.terr[ui.sel].a < 2) ui.sel = ui.target = null;
   if (g.step === 'attack' && ui.target != null && g.terr[ui.target].o === me && !g.pending) ui.target = null;
   if (g.step === 'attack' && ui.sel != null && g.terr[ui.sel].a < 2 && !g.pending) ui.sel = ui.target = null;
 
   map.render(g, highlight());
+  map.showRoute(isMyTurn() && g.step === 'fortify' && ui.sel != null && ui.target != null
+    ? fortifyRoute(g, world, ui.sel, ui.target) : null);
 
   // HUD
   $('#turn-chip').replaceChildren(
@@ -456,17 +461,27 @@ function renderPanel() {
     const acts = [];
     const any = actionable().size > 0;
     if (ui.sel == null) {
-      kids.push(info(stepLabel, any ? 'Opcional: mova tropas entre seus países' : 'Nada para remanejar',
-        any ? 'Toque num país seu destacado e depois num vizinho seu, para reforçar fronteiras. Ou encerre o turno.' : 'Encerre o turno para passar a vez.'));
+      const how = g.settings.fortify === 'free'
+        ? 'para qualquer outro país seu'
+        : 'para qualquer país seu ligado a ele por uma corrente de países seus';
+      kids.push(info(stepLabel, any ? 'Opcional: transfira tropas' : 'Nada para remanejar',
+        any ? `Toque num país seu destacado (de onde saem as tropas) e depois no destino. Pode levar ${how}. Faça quantas transferências quiser.`
+          : 'Nenhum país seu tem tropas sobrando com destino possível. Encerre o turno.'));
     } else {
-      const free = T[ui.sel].a - 1 - (g.moved[ui.sel] || 0);
+      const free = T[ui.sel].a - 1;
       if (ui.target == null) {
-        kids.push(info(stepLabel, 'Agora toque num país seu vizinho (piscando)', `${W[ui.sel].name}: ${free} exército(s) podem sair`));
+        kids.push(info(stepLabel, 'Agora toque no destino (países piscando)',
+          `Saindo de ${W[ui.sel].name}: ${free} exército(s) disponíveis. Toque em outro país seu para trocar a origem.`));
       } else {
-        kids.push(info(stepLabel, `${W[ui.sel].name} → ${W[ui.target].name}`, 'Quantos exércitos mover? (pelo menos 1 sempre fica)'));
-        ui.n = Math.min(Math.max(1, ui.n), Math.max(1, free));
+        const route = fortifyRoute(g, world, ui.sel, ui.target) || [];
+        const via = route.length > 2 ? ` · passando por ${route.length - 2} país(es)` : '';
+        kids.push(info(stepLabel, `${W[ui.sel].name} → ${W[ui.target].name}`, `Quantos exércitos mover? (1 sempre fica)${via}`));
+        ui.n = Math.min(Math.max(1, ui.n), free);
         if (free > 1) acts.push(range(1, free, ui.n, (v) => { ui.n = v; }));
-        if (free > 0) acts.push(btn('Mover', () => act({ type: 'fortify', from: ui.sel, to: ui.target, n: ui.n }), 'blue'));
+        acts.push(btn(`Mover ${free > 1 ? '' : '1'}`.trim(), () => {
+          act({ type: 'fortify', from: ui.sel, to: ui.target, n: ui.n });
+          ui.target = null; // continua com a mesma origem para a próxima transferência
+        }, 'blue'));
       }
       acts.push(cancel());
     }
@@ -591,7 +606,10 @@ function onTap(i) {
   }
   if (g.step === 'fortify') {
     if (!mine) { toast('No remanejamento você só move entre países seus'); return; }
-    if (ui.sel != null && ui.sel !== i && W[ui.sel].nb.includes(i)) { ui.target = i; ui.n = 999; }
+    if (i === ui.sel) { ui.sel = ui.target = null; }
+    else if (ui.sel != null && fortifyTargets(g, world, ui.sel).has(i)) { ui.target = i; ui.n = 999; }
+    else if (T[i].a < 2) { toast(`${W[i].name} tem só 1 exército, não pode ceder tropas`, 'info'); return; }
+    else if (!fortifyTargets(g, world, i).size) { toast(`Não há caminho de países seus a partir de ${W[i].name}`, 'info'); return; }
     else { ui.sel = i; ui.target = null; }
     renderGame();
   }
@@ -670,10 +688,11 @@ async function boot() {
     hostCommit();
   };
   $('#btn-start').onclick = hostStart;
-  for (const id of ['#set-goal', '#set-armies']) {
+  for (const id of ['#set-goal', '#set-armies', '#set-fortify']) {
     $(id).onchange = () => {
       room.lobby.settings.goal = Number($('#set-goal').value);
       room.lobby.settings.startArmies = Number($('#set-armies').value);
+      room.lobby.settings.fortify = $('#set-fortify').value;
       hostCommit();
     };
   }

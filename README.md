@@ -16,7 +16,7 @@ Cada turno tem três fases:
 |---|---|
 | **Reforço** | Recebe `max(3, países ÷ 3)` exércitos + bônus por continente inteiro. Toque nos seus países para posicioná-los. 3 cartas iguais ou 3 diferentes (★ é curinga) podem ser trocadas por exércitos (4, 6, 8, 10, 12, 15, +5…). |
 | **Ataque** | Toque num país seu (2+ exércitos) e depois num vizinho inimigo. Ataque usa até 3 dados, defesa até 2; empate é da defesa. "Até o fim" repete até vencer ou ficar com 1 exército. |
-| **Remanejar** | Mova exércitos entre países seus que fazem fronteira. Cada exército só se move uma vez por turno. |
+| **Remanejar** | Transfira exércitos quantas vezes quiser. No modo *por rota* (padrão) o destino precisa estar ligado à origem por uma corrente de países seus (terra ou rota marítima); no modo *livre* vale qualquer país seu. Sempre fica 1 exército na origem. |
 
 Quem conquistar pelo menos um país no turno ganha uma carta. Vence quem atingir a porcentagem
 de países definida na sala (50% a 100%) ou eliminar todos os adversários.

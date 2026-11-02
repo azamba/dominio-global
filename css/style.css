@@ -182,6 +182,8 @@ body.is-host .guest-only { display: none !important; }
 #map .lbl text { text-anchor: middle; font-family: var(--display); font-weight: 800; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.55); stroke-width: .6px; pointer-events: none; }
 #map .lbl.dim { opacity: .25; }
 #map .float { font-family: var(--display); font-weight: 800; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-opacity: .6; pointer-events: none; }
+#map .route { stroke: #93c5fd; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1 6; vector-effect: non-scaling-stroke; animation: march .6s linear infinite; pointer-events: none; }
+@keyframes march { to { stroke-dashoffset: -7; } }
 #map .battle-arrow { stroke: #fff; stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 #map .boom { fill: none; stroke: #ffd36b; stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 @keyframes blink { from { filter: brightness(1); } to { filter: brightness(1.5); } }
