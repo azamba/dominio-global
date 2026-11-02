@@ -299,3 +299,11 @@ body.is-host .guest-only { display: none !important; }
 .win .trophy { font-size: 60px; }
 .modal-actions { display: flex; gap: 10px; justify-content: center; }
 .modal-box p { margin: 0; }
+
+.file-warning {
+  background: #2a1717; border: 1px solid var(--danger); color: #fecaca;
+  border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.5;
+}
+.file-warning b { color: #fff; display: block; margin-bottom: 4px; }
+.file-warning a { color: var(--accent); }
+.file-warning .cmd { display: block; margin: 8px 0; background: var(--bg); color: var(--text); padding: 7px 10px; border-radius: 7px; font-size: 13px; }

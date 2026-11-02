@@ -163,5 +163,19 @@
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module" src="js/main.js"></script>
+<script>
+  // Aberto direto do disco (file://) o navegador bloqueia os módulos JS e o mapa.
+  if (location.protocol === 'file:') {
+    var c = document.querySelector('.home-card');
+    var d = document.createElement('div');
+    d.className = 'file-warning';
+    d.innerHTML = '<b>Abra por um servidor, não pelo arquivo.</b>' +
+      'O navegador bloqueia o jogo em <code>file://</code>. No terminal, dentro da pasta do projeto, rode:' +
+      '<code class="cmd">python3 -m http.server 8080</code>' +
+      'Depois acesse <a href="http://localhost:8080">http://localhost:8080</a>';
+    c.prepend(d);
+    document.querySelectorAll('#btn-create, #btn-join').forEach(function (b) { b.disabled = true; });
+  }
+</script>
 </body>
 </html>
