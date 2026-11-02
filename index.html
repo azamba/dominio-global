@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0a0f1a">
+  <title>Domínio Global</title>
+  <meta name="description" content="Jogo de estratégia online: domine os países do mapa-múndi com seus exércitos.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- INÍCIO -->
+<section id="home" class="screen active">
+  <div class="home-card">
+    <div class="brand">
+      <span class="globe">◍</span>
+      <h1>DOMÍNIO<small>GLOBAL</small></h1>
+    </div>
+    <p class="tagline">Comande seus exércitos e conquiste o mapa-múndi. Crie uma sala e chame os amigos pelo QR code.</p>
+
+    <label class="field">
+      <span>Seu nome</span>
+      <input id="name" maxlength="16" autocomplete="nickname" placeholder="Ex.: General Ana">
+    </label>
+
+    <div class="home-actions">
+      <button id="btn-create" class="btn primary">Criar sala</button>
+      <div class="or">ou</div>
+      <div class="join-row">
+        <input id="code" maxlength="8" placeholder="CÓDIGO" autocapitalize="characters" autocomplete="off" spellcheck="false">
+        <button id="btn-join" class="btn">Entrar</button>
+      </div>
+    </div>
+    <button id="btn-resume" class="btn ghost hidden"></button>
+    <p class="fine">Para entrar pelo celular, aponte a câmera para o QR code da sala.</p>
+  </div>
+</section>
+
+<!-- SALA DE ESPERA -->
+<section id="lobby" class="screen">
+  <div class="lobby-wrap">
+    <header class="lobby-head">
+      <button class="btn ghost small" data-leave>← Sair</button>
+      <span class="status-dot" id="lobby-status"></span>
+    </header>
+    <div class="lobby-grid">
+      <div class="card invite">
+        <div class="label">Código da sala</div>
+        <div class="room-code" id="room-code">-----</div>
+        <div id="qr" class="qr"></div>
+        <div class="invite-actions">
+          <button class="btn small" id="btn-copy">Copiar link</button>
+          <button class="btn small" id="btn-share">Compartilhar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Jogadores <span id="pcount"></span></div>
+        <ul id="lobby-players" class="plist"></ul>
+        <button class="btn small ghost host-only" id="btn-bot">+ Adicionar bot</button>
+        <div class="settings host-only">
+          <label>Objetivo
+            <select id="set-goal">
+              <option value="0.5">Dominar 50% do mundo</option>
+              <option value="0.6" selected>Dominar 60% do mundo</option>
+              <option value="0.75">Dominar 75% do mundo</option>
+              <option value="1">Dominar o mundo inteiro</option>
+            </select>
+          </label>
+          <label>Exércitos iniciais extras
+            <select id="set-armies">
+              <option value="10">10</option>
+              <option value="15" selected>15</option>
+              <option value="25">25</option>
+              <option value="40">40</option>
+            </select>
+          </label>
+        </div>
+        <p class="guest-only waiting">Aguardando o anfitrião iniciar a partida…</p>
+        <p class="guest-only settings-ro" id="settings-ro"></p>
+        <button class="btn primary host-only" id="btn-start">Iniciar partida</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- JOGO -->
+<section id="game" class="screen">
+  <header class="hud">
+    <button class="icon-btn" id="btn-players" title="Jogadores">☰</button>
+    <div class="turn-chip" id="turn-chip"></div>
+    <div class="steps" id="steps">
+      <span data-step="reinforce">Reforço</span><span data-step="attack">Ataque</span><span data-step="fortify">Remanejar</span>
+    </div>
+    <div class="my-cards" id="my-cards" title="Suas cartas"></div>
+  </header>
+
+  <div class="map-wrap">
+    <svg id="map"></svg>
+    <div class="zoom-ctl">
+      <button class="icon-btn" data-zoom="1.6">+</button>
+      <button class="icon-btn" data-zoom="0.625">−</button>
+      <button class="icon-btn" data-zoom="0">⤢</button>
+    </div>
+    <div class="battle" id="battle"></div>
+    <div class="toast" id="toast"></div>
+    <div class="rotate-hint" id="rotate-hint">↻ Gire o celular para ver melhor o mapa</div>
+  </div>
+
+  <footer class="panel" id="panel"></footer>
+
+  <aside class="drawer" id="drawer">
+    <div class="drawer-head">
+      <strong>Sala <span id="drawer-code"></span></strong>
+      <button class="icon-btn" id="btn-close-drawer">✕</button>
+    </div>
+    <div id="goal-info" class="goal-info"></div>
+    <ul id="game-players" class="plist"></ul>
+    <div class="label">Continentes (bônus)</div>
+    <ul id="continents" class="conts"></ul>
+    <div class="label">Histórico</div>
+    <ol id="log" class="log"></ol>
+    <button class="btn ghost small" data-leave>Sair da partida</button>
+  </aside>
+
+  <div class="overlay hidden" id="winner"></div>
+</section>
+
+<div class="modal hidden" id="modal">
+  <div class="modal-box">
+    <p id="modal-text"></p>
+    <div class="modal-actions">
+      <button class="btn ghost" id="modal-no">Cancelar</button>
+      <button class="btn primary" id="modal-yes">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
