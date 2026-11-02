@@ -94,9 +94,11 @@
     <button class="icon-btn" id="btn-players" title="Jogadores">☰</button>
     <div class="turn-chip" id="turn-chip"></div>
     <div class="steps" id="steps">
-      <span data-step="reinforce">Reforço</span><span data-step="attack">Ataque</span><span data-step="fortify">Remanejar</span>
+      <span data-step="reinforce"><i>1</i>Reforço</span><span data-step="attack"><i>2</i>Ataque</span><span data-step="fortify"><i>3</i>Remanejar</span>
     </div>
-    <div class="my-cards" id="my-cards" title="Suas cartas"></div>
+    <div class="me-chip" id="me-chip"></div>
+    <div class="my-cards" id="my-cards" title="Suas cartas: troque 3 iguais ou 3 diferentes por exércitos"></div>
+    <button class="icon-btn" id="btn-help" title="Como jogar">?</button>
   </header>
 
   <div class="map-wrap">
@@ -108,6 +110,7 @@
     </div>
     <div class="battle" id="battle"></div>
     <div class="toast" id="toast"></div>
+    <div class="turn-banner" id="turn-banner"></div>
     <div class="rotate-hint" id="rotate-hint">↻ Gire o celular para ver melhor o mapa</div>
   </div>
 
@@ -129,6 +132,21 @@
 
   <div class="overlay hidden" id="winner"></div>
 </section>
+
+<div class="modal hidden" id="help">
+  <div class="modal-box help-box">
+    <h2>Como jogar</h2>
+    <p class="help-goal">🎯 <b>Objetivo:</b> dominar a porcentagem de países combinada na sala (veja em ☰). Cada país é um território; o número sobre ele é a quantidade de exércitos.</p>
+    <ol class="help-steps">
+      <li><span class="n">1</span><div><b>Reforço</b> — no início da vez você ganha exércitos (1 a cada 3 países, mínimo 3, + bônus por continente inteiro). Toque nos seus países destacados para colocá-los.</div></li>
+      <li><span class="n">2</span><div><b>Ataque</b> — toque num país seu com 2+ exércitos e depois num inimigo vizinho (ou toque direto no inimigo). O jogo mostra sua chance de vitória. Os dados mais altos de cada lado se enfrentam; empate é da defesa. Ao conquistar, escolha quantos exércitos ocupam o país.</div></li>
+      <li><span class="n">3</span><div><b>Remanejar</b> — opcional: mova tropas entre países seus vizinhos para proteger fronteiras. Depois, <b>Encerrar turno</b>.</div></li>
+    </ol>
+    <p>🃏 <b>Cartas:</b> conquistou pelo menos um país na vez? Ganha uma carta. 3 iguais ou 3 diferentes (★ vale qualquer uma) viram exércitos extras.</p>
+    <p>🗺 <b>Mapa:</b> arraste e use pinça/＋ para dar zoom. Linhas tracejadas são rotas marítimas, que também contam como fronteira. Países apagados não podem ser usados naquele momento.</p>
+    <button class="btn primary" id="help-close">Entendi, vamos jogar!</button>
+  </div>
+</div>
 
 <div class="modal hidden" id="modal">
   <div class="modal-box">

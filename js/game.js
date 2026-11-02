@@ -274,3 +274,18 @@ export function forceEndTurn(s, world, rng = Math.random) {
   }
   nextTurn(s, world, rng);
 }
+
+/** Estima a chance de conquistar atacando "até o fim" (simulação rápida, não afeta o jogo). */
+export function attackOdds(a, d, sims = 500) {
+  let wins = 0;
+  for (let s = 0; s < sims; s++) {
+    let A = a, D = d;
+    while (A > 1 && D > 0) {
+      const na = Math.min(3, A - 1), nd = Math.min(2, D);
+      const ad = roll(Math.random, na), dd = roll(Math.random, nd);
+      for (let i = 0; i < Math.min(na, nd); i++) if (ad[i] > dd[i]) D--; else A--;
+    }
+    if (D === 0) wins++;
+  }
+  return wins / sims;
+}

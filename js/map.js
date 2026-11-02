@@ -93,21 +93,44 @@ export class WorldMap {
     this.svg.transition().duration(450).call(this.zoom.transform, d3.zoomIdentity.translate(500, 260).scale(k).translate(-x, -y));
   }
 
-  /** hl: {sel, target, targets:Set, dim:boolean} */
+  /**
+   * hl.sel / hl.target: seleção atual; hl.targets: alvos válidos (piscam);
+   * hl.act: territórios onde dá para tocar agora; hl.dim: apaga o resto.
+   */
   render(state, hl = {}) {
     const P = state.players, T = state.terr;
     const color = (i) => (T[i].o >= 0 ? P[T[i].o].color : '#555');
+    const lit = (i) => i === hl.sel || i === hl.target || hl.targets?.has(i) || hl.act?.has(i);
     this.paths
       .attr('fill', (_, i) => color(i))
       .classed('sel', (_, i) => i === hl.sel)
       .classed('target', (_, i) => i === hl.target)
       .classed('can', (_, i) => !!hl.targets?.has(i))
-      .classed('dim', (_, i) => hl.dim && i !== hl.sel && i !== hl.target && !hl.targets?.has(i));
+      .classed('act', (_, i) => !!hl.act?.has(i))
+      .classed('dim', (_, i) => hl.dim && !lit(i));
     this.labels.select('circle').attr('fill', (_, i) => color(i));
     this.labels.select('text').text((_, i) => T[i].a);
-    this.labels.classed('dim', (_, i) => hl.dim && i !== hl.sel && i !== hl.target && !hl.targets?.has(i));
+    this.labels.classed('dim', (_, i) => hl.dim && !lit(i));
     // traz selecionados para frente para o contorno aparecer inteiro
-    this.paths.filter('.can, .sel, .target').raise();
+    this.paths.filter('.act, .can, .sel, .target').raise();
+
+    // números flutuantes quando exércitos chegam (reforço/remanejamento)
+    if (this.prev && this.prev.length === T.length) {
+      T.forEach((t, i) => {
+        const d = t.a - this.prev[i].a;
+        if (d > 0 && t.o === this.prev[i].o) this.floatText(i, `+${d}`);
+      });
+    }
+    this.prev = T.map((t) => ({ o: t.o, a: t.a }));
+  }
+
+  floatText(i, text) {
+    const [x, y] = this.proj(this.world.territories[i].c);
+    const k = this.k;
+    const fs = 13 / Math.sqrt(k);
+    this.battleLayer.append('text').attr('class', 'float')
+      .attr('x', x).attr('y', y - 6 / k).attr('font-size', fs).attr('stroke-width', fs * 0.18).text(text)
+      .transition().duration(1100).attr('y', y - 26 / k).style('opacity', 0).remove();
   }
 
   flashBattle(b) {

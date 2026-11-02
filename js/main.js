@@ -1,7 +1,7 @@
 /* global QRCode */
 import {
   createGame, applyAction, forceEndTurn, reinforcementsFor, ownedCount, goalCount,
-  findSet, tradeValue, continentsOwned, CARD_SYMBOLS, MAX_PLAYERS,
+  findSet, tradeValue, continentsOwned, attackOdds, CARD_SYMBOLS, MAX_PLAYERS,
 } from './game.js';
 import { botAction } from './bot.js';
 import { loadWorld, WorldMap } from './map.js';
@@ -260,6 +260,7 @@ function render() {
   if (room.phase === 'lobby') { renderLobby(); show('lobby'); return; }
   show('game');
   if (map && !map.fitted) map.fitInitial();
+  if (!store.get('dominio-help-seen')) { store.set('dominio-help-seen', true); openHelp(); }
   renderGame();
 }
 
@@ -296,19 +297,35 @@ function renderLobby() {
   $('#settings-ro').textContent = `Objetivo: dominar ${Math.round(st.goal * 100)}% do mundo`;
 }
 
+/** Territórios onde o jogador pode tocar agora (sem nada selecionado). */
+function actionable() {
+  const g = game(), me = meIdx(), T = g.terr, W = world.territories;
+  const set = new Set();
+  if (!isMyTurn() || g.pending) return set;
+  T.forEach((t, i) => {
+    if (t.o !== me) return;
+    if (g.step === 'reinforce') { if (g.reserve > 0) set.add(i); }
+    else if (g.step === 'attack') { if (t.a >= 2 && W[i].nb.some((j) => T[j].o !== me)) set.add(i); }
+    else if (t.a - 1 - (g.moved[i] || 0) > 0 && W[i].nb.some((j) => T[j].o === me)) set.add(i);
+  });
+  return set;
+}
+
 function highlight() {
   const g = game();
   const me = meIdx();
-  const hl = { sel: ui.sel, target: ui.target, targets: new Set(), dim: false };
-  if (!isMyTurn() || ui.sel == null) return hl;
+  const hl = { sel: ui.sel, target: ui.target, targets: new Set(), act: new Set(), dim: false };
+  if (!isMyTurn()) return hl;
+  if (g.pending) return { ...hl, sel: g.pending.from, target: g.pending.to, dim: true };
   const W = world.territories, T = g.terr;
-  if (g.step === 'attack') {
-    W[ui.sel].nb.forEach((j) => { if (T[j].o !== me) hl.targets.add(j); });
-    hl.dim = true;
-  } else if (g.step === 'fortify') {
-    W[ui.sel].nb.forEach((j) => { if (T[j].o === me) hl.targets.add(j); });
-    hl.dim = true;
+  if (ui.sel == null) {
+    hl.act = actionable();
+    hl.dim = hl.act.size > 0;
+    return hl;
   }
+  if (g.step === 'attack') W[ui.sel].nb.forEach((j) => { if (T[j].o !== me) hl.targets.add(j); });
+  if (g.step === 'fortify') W[ui.sel].nb.forEach((j) => { if (T[j].o === me) hl.targets.add(j); });
+  hl.dim = true;
   return hl;
 }
 
@@ -325,7 +342,7 @@ function renderGame() {
     lastTurnKey = key;
     ui.sel = ui.target = null;
     if (g.turn === me && g.step === 'reinforce' && !wasMine && g.phase === 'playing') {
-      toast('Sua vez! Posicione seus reforços.', 'info');
+      turnBanner('Sua vez!', `Você recebeu ${g.reserve} exércitos para posicionar`);
       navigator.vibrate?.(120);
     }
   }
@@ -342,6 +359,10 @@ function renderGame() {
     el('span', {}, g.turn === me ? 'Sua vez' : cur.name),
   );
   document.querySelectorAll('#steps span').forEach((s) => s.classList.toggle('on', s.dataset.step === g.step));
+  if (me >= 0) {
+    $('#me-chip').replaceChildren(el('span', { class: 'swatch', style: `background:${g.players[me].color}` }), 'Você');
+    $('#me-chip').title = `Você joga com ${g.players[me].colorName}`;
+  }
   const mine = me >= 0 ? g.players[me].cards : [];
   $('#my-cards').replaceChildren(...mine.map((c) => el('span', {}, CARD_SYMBOLS[c])));
 
@@ -355,82 +376,115 @@ function renderPanel() {
   const g = game();
   const me = meIdx();
   const T = g.terr, W = world.territories;
-  const panel = $('#panel');
   const kids = [];
-  const info = (title, sub) => el('div', { class: 'info' }, el('b', {}, title), sub ? el('div', { class: 'sub' }, sub) : null);
+  const STEP_NO = { reinforce: 1, attack: 2, fortify: 3 };
+  const info = (label, title, sub) => el('div', { class: 'info' },
+    label ? el('div', { class: 'step-label' }, label) : null,
+    el('b', {}, title),
+    sub ? el('div', { class: 'sub' }, sub) : null);
+  const stepLabel = `Passo ${STEP_NO[g.step]} de 3 · ${STEP_NAMES[g.step]}`;
   const btn = (label, onclick, cls = '', disabled = false) => el('button', { class: `btn ${cls}`, onclick, disabled }, label);
+  const cancel = () => btn('✕', () => { ui.sel = ui.target = null; renderGame(); }, 'ghost cancel');
   const range = (min, max, val, onset) => {
     const out = el('output', {}, val);
     const inp = el('input', { type: 'range', min, max, value: val, oninput: (e) => { out.textContent = e.target.value; onset(+e.target.value); } });
     return el('div', { class: 'range' }, inp, out);
   };
+  const terrInfo = (i) => `${W[i].name} · ${T[i].a} exército(s) · ${g.players[T[i].o].name} · ${world.continents[W[i].cont].name}`;
 
   if (g.phase !== 'playing') {
-    kids.push(info('Partida encerrada'));
+    kids.push(info(null, 'Partida encerrada'));
   } else if (!isMyTurn()) {
     const cur = g.players[g.turn];
-    const sel = ui.sel != null ? `${W[ui.sel].name} · ${T[ui.sel].a} exércitos · ${g.players[T[ui.sel].o].name}` : null;
-    kids.push(info(`Aguardando ${cur.name}${cur.bot ? ' (bot)' : ''}…`, sel || `${STEP_NAMES[g.step]} · rodada ${g.round}`));
+    kids.push(info(`Rodada ${g.round} · ${STEP_NAMES[g.step]}`,
+      el('span', {}, el('span', { class: 'dot', style: `background:${cur.color}` }), `Vez de ${cur.name}${cur.bot ? ' (bot)' : ''}`),
+      ui.sel != null ? terrInfo(ui.sel) : 'Aguarde sua vez. Toque num país para ver detalhes; arraste e use o zoom para explorar.'));
   } else if (g.pending) {
     const { from, to, min, max } = g.pending;
     if (ui.pendKey !== g.battle?.seq) { ui.pendKey = g.battle?.seq; ui.n = max; }
     ui.n = Math.min(Math.max(ui.n, min), max);
-    kids.push(info(`Conquistou ${W[to].name}!`, `Quantos exércitos mover de ${W[from].name}?`));
+    kids.push(info('Conquista!', `Você tomou ${W[to].name}! 🎉`,
+      max > min ? `Escolha quantos exércitos entram em ${W[to].name} (o resto fica em ${W[from].name}).` : `${min} exército(s) vão ocupar ${W[to].name}.`));
     kids.push(el('div', { class: 'acts' },
       max > min ? range(min, max, ui.n, (v) => { ui.n = v; }) : null,
-      btn('Mover', () => act({ type: 'move', n: ui.n }), 'primary'),
+      btn('Ocupar ✓', () => act({ type: 'move', n: ui.n }), 'primary'),
     ));
   } else if (g.step === 'reinforce') {
     const r = reinforcementsFor(g, world, me);
     const set = findSet(g.players[me].cards);
-    const sub = g.reserve > 0
-      ? `Toque nos seus territórios. Base ${r.base}${r.bonus ? ` + continentes ${r.bonus}` : ''}`
-      : 'Reforços posicionados. Hora de atacar!';
-    kids.push(info(el('span', {}, 'Reforços: ', el('span', { class: 'big-num' }, g.reserve)), sub));
-    const seg = el('div', { class: 'seg' }, ...[['1', '+1'], ['5', '+5'], ['all', 'Todos']].map(([v, l]) =>
+    if (g.reserve > 0) {
+      kids.push(info(stepLabel,
+        el('span', {}, 'Toque nos seus países (os destacados) para colocar ', el('span', { class: 'big-num' }, g.reserve), ' exércitos'),
+        `Ganhou ${r.base} pelo nº de países${r.bonus ? ` + ${r.bonus} de continentes` : ''}. Dica: reforce quem faz fronteira com inimigos.`));
+    } else {
+      kids.push(info(stepLabel, 'Reforços posicionados!', 'Agora é hora de atacar.'));
+    }
+    const seg = el('div', { class: 'seg', title: 'Quantos exércitos por toque' }, ...[['1', '+1'], ['5', '+5'], ['all', 'Todos']].map(([v, l]) =>
       el('button', { class: ui.qty === v ? 'on' : '', onclick: () => { ui.qty = v; renderPanel(); } }, l)));
     kids.push(el('div', { class: 'acts' },
+      g.reserve > 0 ? el('span', { class: 'mini' }, 'por toque:') : null,
       g.reserve > 0 ? seg : null,
-      set ? btn(`Trocar cartas (+${tradeValue(g.trades)})`, () => act({ type: 'trade' })) : null,
-      btn('Atacar ▶', () => act({ type: 'end' }), 'primary', g.reserve > 0),
+      set ? btn(`🃏 Trocar cartas (+${tradeValue(g.trades)})`, () => act({ type: 'trade' }), 'gold') : null,
+      g.reserve > 0
+        ? btn(`Faltam ${g.reserve}`, null, '', true)
+        : btn('Ir para o ataque ▶', () => act({ type: 'end' }), 'primary glow'),
     ));
   } else if (g.step === 'attack') {
-    let title = 'Ataque', sub = 'Escolha um território seu com 2+ exércitos.';
     const acts = [];
-    if (ui.sel != null && ui.target == null) {
-      title = W[ui.sel].name; sub = `${T[ui.sel].a} exércitos · escolha um vizinho inimigo (destacado).`;
-    } else if (ui.sel != null && ui.target != null) {
+    const any = actionable().size > 0;
+    if (ui.sel == null) {
+      kids.push(any
+        ? info(stepLabel, 'Escolha de onde atacar', 'Toque num país seu destacado (precisa de 2+ exércitos) ou direto num inimigo vizinho. Atacar é opcional.')
+        : info(stepLabel, 'Nenhum ataque possível agora', 'Para atacar, um país seu precisa ter 2+ exércitos e fazer fronteira com um inimigo.'));
+    } else if (ui.target == null) {
+      kids.push(info(stepLabel, 'Agora toque num inimigo piscando', `Atacando de ${W[ui.sel].name} (${T[ui.sel].a} exércitos)`));
+      acts.push(cancel());
+    } else {
       const a = T[ui.sel].a, d = T[ui.target].a;
-      title = `${W[ui.sel].name} (${a}) ⚔ ${W[ui.target].name} (${d})`;
-      sub = `Defensor: ${g.players[T[ui.target].o].name}`;
-      const can = a > 1;
-      acts.push(btn(`Atacar (${Math.min(3, a - 1)} dados)`, () => act({ type: 'attack', from: ui.sel, to: ui.target }), 'danger', !can));
-      acts.push(btn('Até o fim', () => act({ type: 'attack', from: ui.sel, to: ui.target, blitz: true }), '', !can));
+      const odds = Math.round(attackOdds(a, d) * 100);
+      const cls = odds >= 65 ? 'good' : odds >= 35 ? 'mid' : 'bad';
+      kids.push(info(stepLabel,
+        `${W[ui.sel].name} (${a}) ⚔ ${W[ui.target].name} (${d})`,
+        el('span', {}, 'Chance de conquistar: ', el('span', { class: `odds ${cls}` }, `${odds}%`), ` · defensor ${g.players[T[ui.target].o].name}`)));
+      acts.push(cancel());
+      acts.push(btn(`🎲 Rolar ${Math.min(3, a - 1)}×${Math.min(2, d)}`, () => act({ type: 'attack', from: ui.sel, to: ui.target }), 'danger', a < 2));
+      acts.push(btn('⚔ Até conquistar', () => act({ type: 'attack', from: ui.sel, to: ui.target, blitz: true }), 'danger', a < 2));
     }
-    kids.push(info(title, sub));
-    kids.push(el('div', { class: 'acts' }, ...acts, btn('Remanejar ▶', () => act({ type: 'end' }), 'primary')));
+    kids.push(el('div', { class: 'acts' }, ...acts,
+      btn('Parar ataques ▶', () => act({ type: 'end' }), any && ui.target == null ? '' : 'primary')));
   } else if (g.step === 'fortify') {
-    let title = 'Remanejar tropas', sub = 'Mova exércitos entre territórios seus vizinhos. Cada exército só se move uma vez.';
     const acts = [];
-    if (ui.sel != null) {
+    const any = actionable().size > 0;
+    if (ui.sel == null) {
+      kids.push(info(stepLabel, any ? 'Opcional: mova tropas entre seus países' : 'Nada para remanejar',
+        any ? 'Toque num país seu destacado e depois num vizinho seu, para reforçar fronteiras. Ou encerre o turno.' : 'Encerre o turno para passar a vez.'));
+    } else {
       const free = T[ui.sel].a - 1 - (g.moved[ui.sel] || 0);
       if (ui.target == null) {
-        title = W[ui.sel].name; sub = `${free} exército(s) livre(s) · escolha um vizinho seu.`;
+        kids.push(info(stepLabel, 'Agora toque num país seu vizinho (piscando)', `${W[ui.sel].name}: ${free} exército(s) podem sair`));
       } else {
-        title = `${W[ui.sel].name} → ${W[ui.target].name}`;
-        sub = `${free} exército(s) livre(s)`;
+        kids.push(info(stepLabel, `${W[ui.sel].name} → ${W[ui.target].name}`, 'Quantos exércitos mover? (pelo menos 1 sempre fica)'));
         ui.n = Math.min(Math.max(1, ui.n), Math.max(1, free));
-        if (free > 0) {
-          if (free > 1) acts.push(range(1, free, ui.n, (v) => { ui.n = v; }));
-          acts.push(btn('Mover', () => act({ type: 'fortify', from: ui.sel, to: ui.target, n: ui.n })));
-        }
+        if (free > 1) acts.push(range(1, free, ui.n, (v) => { ui.n = v; }));
+        if (free > 0) acts.push(btn('Mover', () => act({ type: 'fortify', from: ui.sel, to: ui.target, n: ui.n }), 'blue'));
       }
+      acts.push(cancel());
     }
-    kids.push(info(title, sub));
     kids.push(el('div', { class: 'acts' }, ...acts, btn('Encerrar turno ✓', () => act({ type: 'end' }), 'primary')));
   }
-  panel.replaceChildren(...kids);
+  $('#panel').replaceChildren(...kids);
 }
+
+let bannerT;
+function turnBanner(title, sub) {
+  const b = $('#turn-banner');
+  b.replaceChildren(el('strong', {}, title), el('span', {}, sub));
+  b.classList.add('show');
+  clearTimeout(bannerT);
+  bannerT = setTimeout(() => b.classList.remove('show'), 2400);
+}
+
+function openHelp() { $('#help').classList.remove('hidden'); }
 
 function renderDrawer() {
   const g = game();
@@ -507,6 +561,7 @@ function renderWinner() {
 function onTap(i) {
   const g = game();
   if (!g) return;
+  $('#turn-banner').classList.remove('show');
   if (i < 0) { ui.sel = ui.target = null; renderGame(); return; }
   const me = meIdx();
   const T = g.terr, W = world.territories;
@@ -514,7 +569,7 @@ function onTap(i) {
   const mine = T[i].o === me;
 
   if (g.step === 'reinforce') {
-    if (!mine) { toast(`${W[i].name} não é seu`); return; }
+    if (!mine) { toast(`${W[i].name} é de ${g.players[T[i].o].name}. Coloque reforços nos seus países.`); return; }
     if (g.reserve <= 0) { toast('Sem reforços. Avance para o ataque.', 'info'); return; }
     act({ type: 'place', t: i, n: ui.qty === 'all' ? g.reserve : Number(ui.qty) });
     return;
@@ -525,16 +580,17 @@ function onTap(i) {
       ui.sel = T[i].a >= 2 ? i : null; ui.target = null;
     } else if (ui.sel != null && W[ui.sel].nb.includes(i)) {
       ui.target = i;
-    } else if (ui.sel != null) {
-      toast(`${W[i].name} não faz fronteira com ${W[ui.sel].name}`);
     } else {
-      toast('Primeiro escolha um território seu');
+      // tocou direto num inimigo: escolhe sozinho o seu vizinho mais forte
+      const src = W[i].nb.filter((j) => T[j].o === me && T[j].a >= 2).sort((a, b) => T[b].a - T[a].a)[0];
+      if (src !== undefined) { ui.sel = src; ui.target = i; }
+      else toast(`Nenhum país seu com 2+ exércitos faz fronteira com ${W[i].name}`);
     }
     renderGame();
     return;
   }
   if (g.step === 'fortify') {
-    if (!mine) { toast('Escolha territórios seus'); return; }
+    if (!mine) { toast('No remanejamento você só move entre países seus'); return; }
     if (ui.sel != null && ui.sel !== i && W[ui.sel].nb.includes(i)) { ui.target = i; ui.n = 999; }
     else { ui.sel = i; ui.target = null; }
     renderGame();
@@ -621,6 +677,9 @@ async function boot() {
       hostCommit();
     };
   }
+  $('#btn-help').onclick = openHelp;
+  $('#help-close').onclick = () => $('#help').classList.add('hidden');
+  $('#help').onclick = (e) => { if (e.target.id === 'help') $('#help').classList.add('hidden'); };
   $('#btn-players').onclick = () => $('#drawer').classList.toggle('open');
   $('#btn-close-drawer').onclick = () => $('#drawer').classList.remove('open');
   document.querySelectorAll('[data-zoom]').forEach((b) => {
